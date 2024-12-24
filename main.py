@@ -5,15 +5,131 @@ import requests
 from time import sleep
 from bs4 import BeautifulSoup
 
+def create_footer(stitch_id):
+    # Gets the HTML and CSS of the footer
+    stitch_code = get_stitch_html_css(stitch_id)
+    stitch_html = stitch_code[0]
+    stitch_css = stitch_code[1]
+
+    # Saves the footer HTML and CSS to their respective files
+    with open("website/src/_includes/components/footer.html", "a") as f:
+        f.write(stitch_html)
+
+    with open("website/src/assets/css/root.css", "a") as f:
+        f.write(stitch_css)
+
+# Swaps a div in the HTML to allow the navbar to work
+def swap_cs_ul_wrapper(old_html):
+    # Parse the HTML
+    parser = BeautifulSoup(old_html, 'html.parser')
+
+    # Find the div with class "cs-ul-wrapper"
+    target_div = parser.find('div', class_='cs-ul-wrapper')
+
+    new_html = """
+    <div class="cs-ul-wrapper">
+                <ul id="cs-expanded" class="cs-ul">
+                    {% set navPages = collections.all | eleventyNavigation %}
+
+                    {# Loop through all pages with a eleventyNavigation in the frontmatter #}
+                    {% for entry in navPages %}
+
+                        {# Define a hasChild variable to make it easier to test what navigation items are have child dropdown pages #}
+                        {% set hasChild = entry.children.length %}
+
+                        {# Check the frontmatter for hideOnMobile/hideOnDesktop. Form a list of classes to be joined when the item is rendered #}
+                        {% set hideClasses = [] %}
+                        {% if entry.hideOnMobile %}
+                            {% set hideClasses = (hideClasses.push("cs-hide-on-mobile"), hideClasses) %}
+                        {% endif %}
+                        {% if entry.hideOnDesktop %}
+                            {% set hideClasses = (hideClasses.push("cs-hide-on-desktop"), hideClasses) %}
+                        {% endif %}
+
+                        {# If this page is a dropdown, give it the appropriate classes, icons and accessibility attributes #}
+                        <li
+                            class="cs-li {% if hasChild %}cs-dropdown{% endif %} {{ hideClasses | join(" ") }}"
+                        >
+                            {# If the page has child dropdown pages, render it as a <button> tag with the appropriate dropdown HTML #}
+                            {% if hasChild %}
+
+                                {# Check to see if the user's current page is one of the child pages. If so, apply the cs-active class to the dropdown parent #}
+                                {% set activeClass = "" %}
+                                {% for child in entry.children %}
+                                    {% if child.url == page.url %}
+                                        {% set activeClass = "cs-active" %}
+                                    {% endif %}
+                                {% endfor %}
+
+                                {# Render the <button> with the active class, dropdown icon and child links #}
+                                <button
+                                    class="cs-li-link cs-dropdown-button {{ activeClass }}"
+                                    aria-expanded="false"
+                                    aria-controls="dropdown-{{ entry.key }}"
+                                    aria-label="dropdown-{{ entry.key }}"
+                                >
+                                    {{ entry.key }}
+                                    <img
+                                        class="cs-drop-icon"
+                                        src="https://csimg.nyc3.cdn.digitaloceanspaces.com/Icons%2Fdown.svg"
+                                        alt="dropdown icon"
+                                        width="15"
+                                        height="15"
+                                        decoding="async"
+                                        aria-hidden="true"
+                                    />
+                                </button>
+
+                                {# Dropdowns have another ul/li set up within the parent li, which gets rendered in the same way as a normal link #}
+                                <ul
+                                    class="cs-drop-ul"
+                                    id="dropdown-{{ entry.key }}"
+                                >
+                                    {% for child in entry.children %}
+                                        <li class="cs-drop-li">
+                                            <a
+                                                href="{{ child.url }}"
+                                                class="cs-li-link cs-drop-link"
+                                                >{{ child.key }}</a
+                                            >
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% else %}
+                                {# Normal pages are rendered as <a> tags, in the normal way you'd expect #}
+                                <a
+                                    href="{{ entry.url }}"
+                                    class="cs-li-link {% if entry.url == page.url %}cs-active{% endif %}"
+                                    {% if entry.url == page.url %}aria-current="page"{% endif %}
+                                >
+                                    {{ entry.key }}
+                                </a>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+    """
+
+    if target_div:
+        target_div.replace_with(new_html)
+
+    print(old_html)
+    return old_html
+
 def create_navbar(stitch_id):
     stitch_html, stitch_css, stitch_js = get_stitch_html_css(stitch_id)
+
+    swap_cs_ul_wrapper(stitch_html)
 
     with open("website/src/_includes/components/header.html", "a") as f:
         f.write(stitch_html)
 
-    with open("website/src/assets/css/", "a") as f:
-        f.write(stitch_html)
+    with open("website/src/assets/css/root.css", "a") as f:
+        f.write(stitch_css)
 
+    with open("website/src/assets/js/nav.js", "a") as f:
+        f.write(stitch_js)
 
 def get_page_html(stitch_id):
     url = "https://codestitch.app/app/dashboard/stitches/" + str(stitch_id)
@@ -111,13 +227,62 @@ def get_stitches(stitches):
 def create_page(page_name, stitches):
     if page_name == "index":
         create_index_page(page_name, stitches)
+        return
 
+    stitches_code = get_stitches(stitches)
+
+    # Creates the HTML and CSS files 
+    pages_path = "website/src/content/pages"
+    # os.system("cp {}/_template.txt {}/{}.html".format(pages_path, pages_path, page_name))
+
+    front_matter = f"""---
+title: 'Page title for <title> and OG tags'
+description: 'Description for <meta> description and OG tags'
+preloadImg: '/assets/images/imagename.format'
+permalink: '{page_name}/'
+eleventyNavigation:
+    key: Name to appear in navigation
+    order: <order>
+    parent: Optional - Put another page's "key" here to create a dropdown
+    hideOnMobile: Optional - set to "true" to hide on devices from, and below, 1023px
+    hideOnDesktop: Optional - set to "true" to hide on devices above, and including, 1024px
+---
+
+{{% extends "layouts/base.html" %}}
+
+    """
+
+    with open("website/src/content/pages/{}.html".format(page_name), "a") as f:
+        f.write(front_matter)
+        f.write("{% block head %}\n")
+        f.write('<link rel="stylesheet" href="/assets/css/{}.css" />'.format(page_name))
+        f.write("\n{% endblock %}\n")
+    
+        f.write("{% block body %}\n")
+
+        for html_and_css in stitches_code:
+            f.write(html_and_css[0])
+            add_javascript(html_and_css, f)
+
+        f.write("\n{% endblock %}\n")
+
+    with open("website/src/assets/css/{}.css".format(page_name), "a") as f:
+        for html_and_css in stitches_code:
+            f.write(html_and_css[1])
+        
 
 # Creates an index page
 def create_index_page(page_name, stitches):
     # Gets all the website's stitches
     stitches_code = get_stitches(stitches)
     save_to_file(page_name, stitches_code)
+
+# Adds any JavaScript from the stitch
+def add_javascript(stitches_code, file):
+    if len(stitches_code) > 2:
+        file.write("<script>")
+        file.write(stitches_code[2])
+        file.write("</script>")
 
 def save_to_file(page_name, html_and_css):
     # Sets the path of the HTML file
@@ -139,6 +304,8 @@ def save_to_file(page_name, html_and_css):
         for html_and_css_code in html_and_css:
             f.write(html_and_css_code[0])
 
+            add_javascript(html_and_css_code, f) 
+
         f.write("\n{% endblock %}\n")
 
     # If the file is a home page, saves the hero's CSS to the critical file
@@ -156,10 +323,19 @@ def save_to_file(page_name, html_and_css):
             f.write(html_and_css_code[1])
             f.write("\n")
 
-    print("Created website!")
 
 # os.system("rm -r website;cp -r backup_website website")
 stitches = [1946, 1666, 1446]
 get_core_styles(stitches[0])
-create_page("index", stitches)
+create_navbar(1530)
+create_footer(1147)
+
+create_page("index", [1619, 1587, 296, 1150])
+create_page("services", [712, 218])
+create_page("about", [712, 1445])
+create_page("gallery", [712, 404])
+
+# create_page("about", [2218, 977, 284, 1267, 490])
+# create_page("gallery", [712, 404])
 # create_page("index", [1785, 1666])
+print("Created website!")
