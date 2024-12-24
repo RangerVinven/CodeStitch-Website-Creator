@@ -4,6 +4,7 @@ import html
 import requests
 from time import sleep
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 def create_footer(stitch_id):
     # Gets the HTML and CSS of the footer
@@ -19,12 +20,7 @@ def create_footer(stitch_id):
         f.write(stitch_css)
 
 # Swaps a div in the HTML to allow the navbar to work
-def swap_cs_ul_wrapper(old_html):
-    # Parse the HTML
-    parser = BeautifulSoup(old_html, 'html.parser')
-
-    # Find the div with class "cs-ul-wrapper"
-    target_div = parser.find('div', class_='cs-ul-wrapper')
+def swap_cs_ul_wrapper(stitch_html):
 
     new_html = """
     <div class="cs-ul-wrapper">
@@ -47,9 +43,7 @@ def swap_cs_ul_wrapper(old_html):
                         {% endif %}
 
                         {# If this page is a dropdown, give it the appropriate classes, icons and accessibility attributes #}
-                        <li
-                            class="cs-li {% if hasChild %}cs-dropdown{% endif %} {{ hideClasses | join(" ") }}"
-                        >
+                        <li class="cs-li {% if hasChild %}cs-dropdown{% endif %} {{ hideClasses | join(" ") }}">
                             {# If the page has child dropdown pages, render it as a <button> tag with the appropriate dropdown HTML #}
                             {% if hasChild %}
 
@@ -111,16 +105,22 @@ def swap_cs_ul_wrapper(old_html):
             </div>
     """
 
-    if target_div:
-        target_div.replace_with(new_html)
+    pattern = r'<div class="cs-ul-wrapper">[\s\S]*?<\/div>'
 
-    print(old_html)
-    return old_html
+    updated_html = re.sub(
+        pattern,
+        # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
+        new_html,
+        stitch_html,
+        flags=re.DOTALL  # Ensures newlines are handled
+    )
+
+    return updated_html
 
 def create_navbar(stitch_id):
     stitch_html, stitch_css, stitch_js = get_stitch_html_css(stitch_id)
 
-    swap_cs_ul_wrapper(stitch_html)
+    stitch_html = swap_cs_ul_wrapper(stitch_html)
 
     with open("website/src/_includes/components/header.html", "a") as f:
         f.write(stitch_html)
@@ -132,8 +132,15 @@ def create_navbar(stitch_id):
         f.write(stitch_js)
 
 def get_page_html(stitch_id):
+    # Gets the session token if there's any
+    session_token = os.getenv("codestitch_session")
+    cookies = {}
+
+    if session_token:
+        cookies["codestitch_session"] = session_token
+
     url = "https://codestitch.app/app/dashboard/stitches/" + str(stitch_id)
-    response = requests.get(url)
+    response = requests.get(url, cookies=cookies)
 
     # If the session token is wrong
     if response.status_code == 403:
@@ -224,7 +231,7 @@ def get_stitches(stitches):
     return stitches_code
 
 # Creates a page
-def create_page(page_name, stitches):
+def create_page(page_name, stitches, order = 100):
     if page_name == "index":
         create_index_page(page_name, stitches)
         return
@@ -241,11 +248,8 @@ description: 'Description for <meta> description and OG tags'
 preloadImg: '/assets/images/imagename.format'
 permalink: '{page_name}/'
 eleventyNavigation:
-    key: Name to appear in navigation
-    order: <order>
-    parent: Optional - Put another page's "key" here to create a dropdown
-    hideOnMobile: Optional - set to "true" to hide on devices from, and below, 1023px
-    hideOnDesktop: Optional - set to "true" to hide on devices above, and including, 1024px
+    key: {page_name.replace("_", " ").replace("-", " ").capitalize()}
+    order: {order}
 ---
 
 {{% extends "layouts/base.html" %}}
@@ -324,18 +328,21 @@ def save_to_file(page_name, html_and_css):
             f.write("\n")
 
 
-# os.system("rm -r website;cp -r backup_website website")
-stitches = [1946, 1666, 1446]
-get_core_styles(stitches[0])
-create_navbar(1530)
-create_footer(1147)
+if __name__ == "__main__":
+    load_dotenv()
 
-create_page("index", [1619, 1587, 296, 1150])
-create_page("services", [712, 218])
-create_page("about", [712, 1445])
-create_page("gallery", [712, 404])
+    # Gets the core styles of any stitch (they're the same)
+    get_core_styles(1619)
 
-# create_page("about", [2218, 977, 284, 1267, 490])
-# create_page("gallery", [712, 404])
-# create_page("index", [1785, 1666])
-print("Created website!")
+    # Creates the navbar and footer 
+    create_navbar(1530)
+    create_footer(1392)
+
+    # Creates each individual page
+    # create_page("index", [1619, 1587, 296, 1150])
+    create_page("index", [2041, 2202, 2221])
+    create_page("about", [712, 1445])
+    create_page("services", [712, 218])
+    create_page("gallery", [712, 404])
+
+    print("Created website!")
