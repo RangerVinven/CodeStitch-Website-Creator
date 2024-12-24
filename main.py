@@ -1,5 +1,7 @@
+import re
 import html
 import requests
+from time import sleep
 from bs4 import BeautifulSoup
 
 def get_stitch_html_css(stitch_id):
@@ -54,6 +56,42 @@ def get_stitch_html_css(stitch_id):
 
     return (stitch_html, stitch_css)
     
-code = get_stitch_html_css(2051)
-print(code)
+# Gets a list of the stitches
+def get_stitches(stitches):
+    stitches_code = []
+    for stitch in stitches:
+        print("Getting {}...".format(stitch))
 
+        code = get_stitch_html_css(stitch)
+        stitches_code.append(code)
+
+        print("Got {}!".format(stitch))
+        sleep(0.5)
+
+    return stitches_code
+
+# Creates a page
+def create_page(page_name, stitches):
+    if page_name == "index":
+        create_index_page(page_name, stitches)
+
+# Creates an index page
+def create_index_page(page_name, stitches):
+    # Gets all the website's stitches
+    stitches_code = get_stitches(stitches)
+    save_to_file(stitches_code)
+
+def save_to_file(html_and_css):
+    with open("index.html", "a") as f:
+        f.write("{% block body %}\n")
+
+        # Writes the HTML to the index file
+        for html_and_css_code in html_and_css:
+            f.write(html_and_css_code[0])
+
+        f.write("\n{% endblock %}\n")
+
+# code = get_stitch_html_css(2051)
+# print(code)
+
+create_page("index", [1785, 1666, 1446])
