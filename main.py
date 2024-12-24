@@ -5,6 +5,16 @@ import requests
 from time import sleep
 from bs4 import BeautifulSoup
 
+def create_navbar(stitch_id):
+    stitch_html, stitch_css, stitch_js = get_stitch_html_css(stitch_id)
+
+    with open("website/src/_includes/components/header.html", "a") as f:
+        f.write(stitch_html)
+
+    with open("website/src/assets/css/", "a") as f:
+        f.write(stitch_html)
+
+
 def get_page_html(stitch_id):
     url = "https://codestitch.app/app/dashboard/stitches/" + str(stitch_id)
     response = requests.get(url)
@@ -48,6 +58,20 @@ def get_stitch_html_css(stitch_id):
 
     # Gets the core styles
     css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "core-styles"})
+
+    # Gets the code_id
+    js_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "js"})
+    if js_a_tag != None:
+        code_id = js_a_tag["data-codeid"]
+
+        # Gets the div with the textarea child with the css
+        parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
+
+        # Gets the stitch's JS
+        stitch_js_code = parent_div[0].find("textarea")
+        stitch_js = html.unescape(stitch_js_code.text)
+        
+        return [stitch_html, stitch_css, stitch_js]
 
     return [stitch_html, stitch_css]
 
@@ -135,7 +159,7 @@ def save_to_file(page_name, html_and_css):
     print("Created website!")
 
 # os.system("rm -r website;cp -r backup_website website")
-stitches = [1785, 1666, 1446]
+stitches = [1946, 1666, 1446]
 get_core_styles(stitches[0])
 create_page("index", stitches)
 # create_page("index", [1785, 1666])
