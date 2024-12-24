@@ -4,3 +4,6 @@ git clone https://github.com/RangerVinven/Intermediate-SASS-CodeStitch-Fork.git 
 cd website
 npm install
 cd ../
+python3 main.py
+cd website
+npx @11ty/eleventy --serve
