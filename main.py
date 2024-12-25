@@ -1,5 +1,7 @@
 import re
 import os
+import yaml
+import json
 import html
 import requests
 from time import sleep
@@ -146,6 +148,8 @@ def get_page_html(stitch_id):
     if response.status_code == 403:
         raise Exception("Server responded with 403 Forbidden. Is your codestitch_session correct? Check your .env file")
     
+    if response.status_code == 404:
+        raise Exception("Stitch {} doesn't exist.".format(stitch_id))
 
     # Gets the entire page's contents
     page_html = response.content.decode()
@@ -327,22 +331,63 @@ def save_to_file(page_name, html_and_css):
             f.write(html_and_css_code[1])
             f.write("\n")
 
+def parse_yaml_file():
+    file_data = None
+
+    with open('new_website.yaml', 'r') as yaml_file:
+        file_data = yaml.safe_load(yaml_file)
+
+        # Convert to JSON
+        # json_data = json.dumps(data, indent=4)
+
+    return file_data
 
 if __name__ == "__main__":
+    # Loads the enviroment variables
     load_dotenv()
 
-    # Gets the core styles of any stitch (they're the same)
-    get_core_styles(1619)
+    # Gets the data from the YAML file
+    website_data = parse_yaml_file()
 
-    # Creates the navbar and footer 
-    create_navbar(1530)
-    create_footer(1392)
+    # Gets the core styles for any stitch (they're all the same)
+    get_core_styles(website_data["Navbar"])
 
-    # Creates each individual page
-    # create_page("index", [1619, 1587, 296, 1150])
-    create_page("index", [2041, 2202, 2221])
-    create_page("about", [712, 1445])
-    create_page("services", [712, 218])
-    create_page("gallery", [712, 404])
+    # Creates the navbar  
+    if website_data["Navbar"]:
+        print("Creating the navbar...")
+        create_navbar(website_data["Navbar"])
+        print("Navbar created!")
 
-    print("Created website!")
+    # Creates the footer  
+    if website_data["Footer"]:
+        print("Creating the footer...")
+        create_footer(website_data["Footer"])
+        print("Footer created!")
+
+    # Exists the program if there's no pages provided (since there's nothing left to do)
+    if not website_data["Pages"]:
+        print("No pages found, goodebye!")
+        exit
+
+    for page in website_data["Pages"]:
+        print("Creating {} page...".format(page["Page_Name"]))
+        create_page(page["Page_Name"], page["Sections"])
+        print("Page created!")
+
+    print("Website created!")
+    
+    # # Gets the core styles of any stitch (they're the same)
+    # get_core_styles(1619)
+    #
+    # # Creates the navbar and footer 
+    # create_navbar(1530)
+    # create_footer(1392)
+    #
+    # # Creates each individual page
+    # # create_page("index", [1619, 1587, 296, 1150])
+    # create_page("index", [2041, 2202, 2221])
+    # create_page("about", [712, 1445])
+    # create_page("services", [712, 218])
+    # create_page("gallery", [712, 404])
+
+    # print("Created website!")
