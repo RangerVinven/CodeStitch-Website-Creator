@@ -374,7 +374,7 @@ if __name__ == "__main__":
         create_page(page["Page_Name"], page["Sections"])
         print("Page created!")
 
-    print("Website created!")
+    print("Website created! Please look at the websites/ folder for your new website")
     
     # # Gets the core styles of any stitch (they're the same)
     # get_core_styles(1619)
