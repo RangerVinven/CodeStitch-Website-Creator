@@ -9,17 +9,17 @@ from time import sleep
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-def create_footer(stitch_id):
+def create_footer(stitch_id, website_name):
     # Gets the HTML and CSS of the footer
     stitch_code = get_stitch_html_css(stitch_id)
     stitch_html = stitch_code[0]
     stitch_css = stitch_code[1]
 
     # Saves the footer HTML and CSS to their respective files
-    with open("website/src/_includes/components/footer.html", "a") as f:
+    with open("{}/src/_includes/components/footer.html".format(website_name), "a") as f:
         f.write(stitch_html)
 
-    with open("website/src/assets/css/root.css", "a") as f:
+    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
         f.write(stitch_css)
 
 def swap_html(old_html, html_to_swap_with, regex_pattern):
@@ -135,18 +135,18 @@ def swap_cs_ul_wrapper(stitch_html):
 
     return updated_html
 
-def create_navbar(stitch_id):
+def create_navbar(stitch_id, website_name):
     stitch_html, stitch_css, stitch_js = get_stitch_html_css(stitch_id)
 
     stitch_html = swap_cs_ul_wrapper(stitch_html)
 
-    with open("website/src/_includes/components/header.html", "a") as f:
+    with open("{}/src/_includes/components/header.html".format(website_name), "a") as f:
         f.write(stitch_html)
 
-    with open("website/src/assets/css/root.css", "a") as f:
+    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
         f.write(stitch_css)
 
-    with open("website/src/assets/js/nav.js", "a") as f:
+    with open("{}/src/assets/js/nav.js".format(website_name), "a") as f:
         f.write(stitch_js)
 
 def get_page_html(stitch_id):
@@ -218,7 +218,7 @@ def get_stitch_html_css(stitch_id):
 
     return [stitch_html, stitch_css]
 
-def get_core_styles(stitch_id):
+def get_core_styles(stitch_id, website_name):
     page_html = get_page_html(stitch_id)
 
     # Initalises the parser
@@ -232,7 +232,7 @@ def get_core_styles(stitch_id):
     core_styles = html.unescape(core_styles_encoded.text)
 
     # Saves it to the root.css file
-    with open("website/src/assets/css/root.css", "a") as f:
+    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
         f.write(core_styles)
 
 
@@ -251,15 +251,15 @@ def get_stitches(stitches):
     return stitches_code
 
 # Creates a page
-def create_page(page_name, stitches, order = 100):
+def create_page(page_name, stitches, website_name, order = 100):
     if page_name == "index":
-        create_index_page(page_name, stitches)
+        create_index_page(page_name, stitches, website_name)
         return
 
     stitches_code = get_stitches(stitches)
 
     # Creates the HTML and CSS files 
-    pages_path = "website/src/content/pages"
+    pages_path = website_name + "/src/content/pages"
     # os.system("cp {}/_template.txt {}/{}.html".format(pages_path, pages_path, page_name))
 
     front_matter = f"""---
@@ -276,7 +276,7 @@ eleventyNavigation:
 
     """
 
-    with open("website/src/content/pages/{}.html".format(page_name), "a") as f:
+    with open("{}/src/content/pages/{}.html".format(website_name, page_name), "a") as f:
         f.write(front_matter)
         f.write("{% block head %}\n")
         f.write('<link rel="stylesheet" href="/assets/css/{}.css" />'.format(page_name))
@@ -290,16 +290,16 @@ eleventyNavigation:
 
         f.write("\n{% endblock %}\n")
 
-    with open("website/src/assets/css/{}.css".format(page_name), "a") as f:
+    with open("{}/src/assets/css/{}.css".format(website_name, page_name), "a") as f:
         for html_and_css in stitches_code:
             f.write(html_and_css[1])
         
 
 # Creates an index page
-def create_index_page(page_name, stitches):
+def create_index_page(page_name, stitches, website_name):
     # Gets all the website's stitches
     stitches_code = get_stitches(stitches)
-    save_to_file(page_name, stitches_code)
+    save_to_file(page_name, stitches_code, website_name)
 
 # Adds any JavaScript from the stitch
 def add_javascript(stitches_code, file):
@@ -308,17 +308,17 @@ def add_javascript(stitches_code, file):
         file.write(stitches_code[2])
         file.write("</script>")
 
-def save_to_file(page_name, html_and_css):
+def save_to_file(page_name, html_and_css, save_to_file, website_name):
     # Sets the path of the HTML file
     html_file_path = ""
     css_file_path = ""
     if page_name == "index":
-        html_file_path += "website/src/" + page_name + ".html"
-        css_file_path += "website/src/assets/css/" + "local.css"
+        html_file_path += website_name + "/src/" + page_name + ".html"
+        css_file_path += website_name + "/src/assets/css/" + "local.css"
 
     else:
-        html_file_path += "website/src/content/pages/" + page_name + ".html"
-        css_file_path += "website/src/assets/css/" + page_name + ".css"
+        html_file_path += website_name + "/src/content/pages/" + page_name + ".html"
+        css_file_path += website_name + "/src/assets/css/" + page_name + ".css"
 
     # Saves the HTML to the file
     with open(html_file_path, "a") as f:
@@ -334,7 +334,7 @@ def save_to_file(page_name, html_and_css):
 
     # If the file is a home page, saves the hero's CSS to the critical file
     if page_name == "index":
-        with open("website/src/assets/css/critical.css", "a") as f:
+        with open("{}/src/assets/css/critical.css".format(website_name), "a") as f:
             f.write("\n")
             f.write(html_and_css[0][1])
             f.write("\n")
@@ -369,27 +369,33 @@ if __name__ == "__main__":
         type=str, 
         help="The path to the YAML file containing the website data."
     )
+    parser.add_argument(
+        "website_name", 
+        type=str, 
+        help="The name for the folder to put the website in."
+    )
     args = parser.parse_args()
 
-    # Gets the file name
+    # Gets the file name and website name
     file_name = args.file_name
+    website_name = args.website_name
 
     # Gets the data from the YAML file
     website_data = parse_yaml_file(file_name)
 
     # Gets the core styles for any stitch (they're all the same)
-    get_core_styles(website_data["Navbar"])
+    get_core_styles(website_data["Navbar"], website_name)
 
     # Creates the navbar  
     if website_data["Navbar"]:
         print("Creating the navbar...")
-        create_navbar(website_data["Navbar"])
+        create_navbar(website_data["Navbar"], website_name)
         print("Navbar created!")
 
     # Creates the footer  
     if website_data["Footer"]:
         print("Creating the footer...")
-        create_footer(website_data["Footer"])
+        create_footer(website_data["Footer"], website_name)
         print("Footer created!")
 
     # Exists the program if there's no pages provided (since there's nothing left to do)
@@ -399,23 +405,8 @@ if __name__ == "__main__":
 
     for page in website_data["Pages"]:
         print("Creating {} page...".format(page["Page_Name"]))
-        create_page(page["Page_Name"], page["Sections"])
+        create_page(page["Page_Name"], page["Sections"], website_name)
         print("Page created!")
 
-    print("Website created! Please look at the websites/ folder for your new website")
-    
-    # # Gets the core styles of any stitch (they're the same)
-    # get_core_styles(1619)
-    #
-    # # Creates the navbar and footer 
-    # create_navbar(1530)
-    # create_footer(1392)
-    #
-    # # Creates each individual page
-    # # create_page("index", [1619, 1587, 296, 1150])
-    # create_page("index", [2041, 2202, 2221])
-    # create_page("about", [712, 1445])
-    # create_page("services", [712, 218])
-    # create_page("gallery", [712, 404])
+    print("Website created! Please look at the {}/ folder for your new website".format(website_name))
 
-    # print("Created website!")
