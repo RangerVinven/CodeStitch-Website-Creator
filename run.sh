@@ -5,6 +5,6 @@ cd website
 git remote remove origin
 npm install
 cd ../
-python3 main.py
+python3 main.py $1
 cd website
 npx @11ty/eleventy --serve

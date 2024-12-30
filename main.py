@@ -3,6 +3,7 @@ import os
 import yaml
 import json
 import html
+import argparse
 import requests
 from time import sleep
 from bs4 import BeautifulSoup
@@ -20,6 +21,18 @@ def create_footer(stitch_id):
 
     with open("website/src/assets/css/root.css", "a") as f:
         f.write(stitch_css)
+
+def swap_html(old_html, html_to_swap_with, regex_pattern):
+    updated_html = re.sub(
+        regex_pattern,
+        # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
+        html_to_swap_with,
+        old_html,
+        flags=re.DOTALL  # Ensures newlines are handled
+    )
+
+    return updated_html
+
 
 # Swaps a div in the HTML to allow the navbar to work
 def swap_cs_ul_wrapper(stitch_html):
@@ -108,14 +121,17 @@ def swap_cs_ul_wrapper(stitch_html):
     """
 
     pattern = r'<div class="cs-ul-wrapper">[\s\S]*?<\/div>'
+    #
+    # updated_html = re.sub(
+    #     pattern,
+    #     # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
+    #     new_html,
+    #     stitch_html,
+    #     flags=re.DOTALL  # Ensures newlines are handled
+    # )
 
-    updated_html = re.sub(
-        pattern,
-        # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
-        new_html,
-        stitch_html,
-        flags=re.DOTALL  # Ensures newlines are handled
-    )
+# def swap_html(old_html, html_to_swap_with, regex_pattern):
+    updated_html = swap_html(stitch_html, new_html, pattern)
 
     return updated_html
 
@@ -331,10 +347,10 @@ def save_to_file(page_name, html_and_css):
             f.write(html_and_css_code[1])
             f.write("\n")
 
-def parse_yaml_file():
+def parse_yaml_file(file_name):
     file_data = None
 
-    with open('new_website.yaml', 'r') as yaml_file:
+    with open(file_name, 'r') as yaml_file:
         file_data = yaml.safe_load(yaml_file)
 
         # Convert to JSON
@@ -346,8 +362,20 @@ if __name__ == "__main__":
     # Loads the enviroment variables
     load_dotenv()
 
+    # Sets up an argument parser
+    parser = argparse.ArgumentParser(description="Generate a website from a YAML file.")
+    parser.add_argument(
+        "file_name", 
+        type=str, 
+        help="The path to the YAML file containing the website data."
+    )
+    args = parser.parse_args()
+
+    # Gets the file name
+    file_name = args.file_name
+
     # Gets the data from the YAML file
-    website_data = parse_yaml_file()
+    website_data = parse_yaml_file(file_name)
 
     # Gets the core styles for any stitch (they're all the same)
     get_core_styles(website_data["Navbar"])
