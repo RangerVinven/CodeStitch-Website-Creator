@@ -3,41 +3,121 @@ import os
 import yaml
 import json
 import html
+import shutil
 import argparse
 import requests
+import subprocess
 from time import sleep
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
-def create_footer(stitch_id, website_name):
-    # Gets the HTML and CSS of the footer
-    stitch_code = get_stitch_html_css(stitch_id)
-    stitch_html = stitch_code[0]
-    stitch_css = stitch_code[1]
+class WebsiteBuilder:
+    def __init__(self, website_name):
+        self.website_name = website_name
+        self.session_token = os.getenv("codestitch_session")
+        self.cookies = {}
+        if self.session_token:
+            self.cookies["codestitch_session"] = self.session_token
 
-    # Saves the footer HTML and CSS to their respective files
-    with open("{}/src/_includes/components/footer.html".format(website_name), "a") as f:
-        f.write(stitch_html)
+    def check_and_remove_directory(self):
+        """Checks if directory exists and asks for confirmation before removing"""
+        if os.path.exists(self.website_name):
+            response = input(f"Directory '{self.website_name}' already exists. Do you want to delete it? (y/n): ")
+            if response.lower() == 'y':
+                print(f"Removing {self.website_name} directory...")
+                shutil.rmtree(self.website_name)
+                print("Directory removed.")
+            else:
+                print("Operation cancelled.")
+                exit(1)
 
-    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
-        f.write(stitch_css)
+    def clone_and_setup_repository(self):
+        """Clones the repository and sets up the project"""
+        print("Cloning repository...")
+        subprocess.run([
+            "git", "clone",
+            "https://github.com/RangerVinven/Intermediate-SASS-CodeStitch-Fork.git",
+            self.website_name
+        ], check=True)
 
-def swap_html(old_html, html_to_swap_with, regex_pattern):
-    updated_html = re.sub(
-        regex_pattern,
-        # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
-        html_to_swap_with,
-        old_html,
-        flags=re.DOTALL  # Ensures newlines are handled
-    )
+        print("Removing git origin...")
+        subprocess.run(["git", "remote", "remove", "origin"], 
+                      cwd=self.website_name, 
+                      check=True)
 
-    return updated_html
+        print("Installing npm packages...")
+        subprocess.run(["npm", "install"], 
+                      cwd=self.website_name, 
+                      check=True)
 
+    def start_eleventy_server(self):
+        """Starts the Eleventy server"""
+        print("Starting Eleventy server...")
+        subprocess.run(["npx", "@11ty/eleventy", "--serve"], 
+                      cwd=self.website_name)
 
-# Swaps a div in the HTML to allow the navbar to work
-def swap_cs_ul_wrapper(stitch_html):
+    def build(self, yaml_file):
+        """Builds the entire website based on the YAML configuration"""
+        # First check and potentially remove existing directory
+        self.check_and_remove_directory()
 
-    new_html = """
+        # Clone and setup repository
+        self.clone_and_setup_repository()
+
+        # Load website data using the static method
+        website_data = WebsiteBuilder.parse_yaml_file(yaml_file)
+        
+        # Get core styles
+        print("Getting core styles...")
+        self.get_core_styles(website_data["Navbar"])
+        print("Core styles added!")
+
+        # Create navbar
+        if website_data["Navbar"]:
+            print("Creating the navbar...")
+            self.create_navbar(website_data["Navbar"])
+            print("Navbar created!")
+
+        # Create footer
+        if website_data["Footer"]:
+            print("Creating the footer...")
+            self.create_footer(website_data["Footer"])
+            print("Footer created!")
+
+        # Create pages
+        if not website_data["Pages"]:
+            print("No pages found!")
+            return
+
+        for page in website_data["Pages"]:
+            print(f"Creating {page['Page_Name']} page...")
+            self.create_page(page["Page_Name"], page["Sections"])
+            print("Page created!")
+
+        print(f"Website created! Starting Eleventy server...")
+        
+        # Start the Eleventy server
+        self.start_eleventy_server()
+
+    def create_footer(self, stitch_id):
+        stitch_html, stitch_css = self.get_stitch_html_css(stitch_id)
+        
+        with open(f"{self.website_name}/src/_includes/components/footer.html", "a") as f:
+            f.write(stitch_html)
+
+        with open(f"{self.website_name}/src/assets/css/root.css", "a") as f:
+            f.write(stitch_css)
+
+    def swap_html(self, old_html, html_to_swap_with, regex_pattern):
+        return re.sub(
+            regex_pattern,
+            html_to_swap_with,
+            old_html,
+            flags=re.DOTALL
+        )
+
+    def swap_cs_ul_wrapper(self, stitch_html):
+        new_html = """
     <div class="cs-ul-wrapper">
                 <ul id="cs-expanded" class="cs-ul">
                     {% set navPages = collections.all | eleventyNavigation %}
@@ -119,150 +199,90 @@ def swap_cs_ul_wrapper(stitch_html):
                 </ul>
             </div>
     """
+        pattern = r'<div class="cs-ul-wrapper">[\s\S]*?<\/div>'
+        return self.swap_html(stitch_html, new_html, pattern)
 
-    pattern = r'<div class="cs-ul-wrapper">[\s\S]*?<\/div>'
-    #
-    # updated_html = re.sub(
-    #     pattern,
-    #     # r'\1' + new_html + r'\3',  # Replace the middle group (inner content)
-    #     new_html,
-    #     stitch_html,
-    #     flags=re.DOTALL  # Ensures newlines are handled
-    # )
+    def create_navbar(self, stitch_id):
+        stitch_html, stitch_css, stitch_js = self.get_stitch_html_css(stitch_id)
+        stitch_html = self.swap_cs_ul_wrapper(stitch_html)
 
-# def swap_html(old_html, html_to_swap_with, regex_pattern):
-    updated_html = swap_html(stitch_html, new_html, pattern)
+        with open(f"{self.website_name}/src/_includes/components/header.html", "a") as f:
+            f.write(stitch_html)
 
-    return updated_html
+        with open(f"{self.website_name}/src/assets/css/root.css", "a") as f:
+            f.write(stitch_css)
 
-def create_navbar(stitch_id, website_name):
-    stitch_html, stitch_css, stitch_js = get_stitch_html_css(stitch_id)
+        with open(f"{self.website_name}/src/assets/js/nav.js", "a") as f:
+            f.write(stitch_js)
 
-    stitch_html = swap_cs_ul_wrapper(stitch_html)
+    def get_page_html(self, stitch_id):
+        url = f"https://codestitch.app/app/dashboard/stitches/{stitch_id}"
+        response = requests.get(url, cookies=self.cookies)
 
-    with open("{}/src/_includes/components/header.html".format(website_name), "a") as f:
-        f.write(stitch_html)
+        if response.status_code == 403:
+            raise Exception("Server responded with 403 Forbidden. Is your codestitch_session correct? Check your .env file")
+        
+        if response.status_code == 404:
+            raise Exception(f"Stitch {stitch_id} doesn't exist.")
 
-    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
-        f.write(stitch_css)
+        return response.content.decode()
 
-    with open("{}/src/assets/js/nav.js".format(website_name), "a") as f:
-        f.write(stitch_js)
+    def get_stitch_html_css(self, stitch_id):
+        page_html = self.get_page_html(stitch_id)
+        parser = BeautifulSoup(page_html, "html.parser")
+        stitch_html_encoded = parser.select(".tab.active-tab .CODE-TEXTAREA")
+        
+        if len(stitch_html_encoded) == 0:
+            raise Exception("Couldn't get the HTML from the stitch")
 
-def get_page_html(stitch_id):
-    # Gets the session token if there's any
-    session_token = os.getenv("codestitch_session")
-    cookies = {}
+        stitch_html = html.unescape(stitch_html_encoded[0].text)
 
-    if session_token:
-        cookies["codestitch_session"] = session_token
-
-    url = "https://codestitch.app/app/dashboard/stitches/" + str(stitch_id)
-    response = requests.get(url, cookies=cookies)
-
-    # If the session token is wrong
-    if response.status_code == 403:
-        raise Exception("Server responded with 403 Forbidden. Is your codestitch_session correct? Check your .env file")
-    
-    if response.status_code == 404:
-        raise Exception("Stitch {} doesn't exist.".format(stitch_id))
-
-    # Gets the entire page's contents
-    page_html = response.content.decode()
-    return page_html
-
-def get_stitch_html_css(stitch_id):
-    page_html = get_page_html(stitch_id)
-
-    # Creates the parser and extracts the HTML
-    parser = BeautifulSoup(page_html, "html.parser")
-    stitch_html_encoded = parser.select(".tab.active-tab .CODE-TEXTAREA")
-    
-    # If we couldn't get the HTML
-    if len(stitch_html_encoded) == 0:
-        raise Exception("Couldn't get the HTML from the stitch")
-
-    # Decodes the HTML (it's recieved URL encoded)
-    stitch_html = html.unescape(stitch_html_encoded[0].text)
-
-    # Gets the code_id
-    css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "css"})
-    code_id = css_a_tag["data-codeid"]
-
-    # Gets the div with the textarea child with the css
-    parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
-
-    if len(parent_div) == 0:
-        raise Exception("Couldn't find the div with the correct data-codeid: " + str(code_id))
-
-    # Gets the stitch's CSS
-    stitch_css_encoded = parent_div[0].find("textarea")
-    stitch_css = html.unescape(stitch_css_encoded.text)
-
-    # Gets the core styles
-    css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "core-styles"})
-
-    # Gets the code_id
-    js_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "js"})
-    if js_a_tag != None:
-        code_id = js_a_tag["data-codeid"]
-
-        # Gets the div with the textarea child with the css
+        css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "css"})
+        code_id = css_a_tag["data-codeid"]
         parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
 
-        # Gets the stitch's JS
-        stitch_js_code = parent_div[0].find("textarea")
-        stitch_js = html.unescape(stitch_js_code.text)
-        
-        return [stitch_html, stitch_css, stitch_js]
+        if len(parent_div) == 0:
+            raise Exception(f"Couldn't find the div with the correct data-codeid: {code_id}")
 
-    return [stitch_html, stitch_css]
+        stitch_css_encoded = parent_div[0].find("textarea")
+        stitch_css = html.unescape(stitch_css_encoded.text)
 
-def get_core_styles(stitch_id, website_name):
-    page_html = get_page_html(stitch_id)
+        js_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "js"})
+        if js_a_tag:
+            code_id = js_a_tag["data-codeid"]
+            parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
+            stitch_js_code = parent_div[0].find("textarea")
+            stitch_js = html.unescape(stitch_js_code.text)
+            return [stitch_html, stitch_css, stitch_js]
 
-    # Initalises the parser
-    parser = BeautifulSoup(page_html, "html.parser")
+        return [stitch_html, stitch_css]
 
-    # Creates the parent_div
-    parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": "core-styles-CSS"})
-    core_styles_encoded = parent_div[0].find("textarea")
+    def get_core_styles(self, stitch_id):
+        page_html = self.get_page_html(stitch_id)
+        parser = BeautifulSoup(page_html, "html.parser")
+        parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": "core-styles-CSS"})
+        core_styles_encoded = parent_div[0].find("textarea")
+        core_styles = html.unescape(core_styles_encoded.text)
 
-    # Decodes the core_styles
-    core_styles = html.unescape(core_styles_encoded.text)
+        with open(f"{self.website_name}/src/assets/css/root.css", "a") as f:
+            f.write(core_styles)
 
-    # Saves it to the root.css file
-    with open("{}/src/assets/css/root.css".format(website_name), "a") as f:
-        f.write(core_styles)
+    def get_stitches(self, stitches):
+        stitches_code = []
+        for stitch in stitches:
+            print(f"Getting {stitch}...")
+            code = self.get_stitch_html_css(stitch)
+            stitches_code.append(code)
+            print(f"Got {stitch}!")
+        return stitches_code
 
+    def create_page(self, page_name, stitches, order=100):
+        if page_name == "index":
+            self.create_index_page(page_name, stitches)
+            return
 
-# Gets a list of the stitches
-def get_stitches(stitches):
-    stitches_code = []
-    for stitch in stitches:
-        print("Getting {}...".format(stitch))
-
-        code = get_stitch_html_css(stitch)
-        stitches_code.append(code)
-
-        print("Got {}!".format(stitch))
-        # sleep(0.5)
-
-    return stitches_code
-
-# Creates a page
-def create_page(page_name, stitches, website_name, order = 100):
-    if page_name == "index":
-        create_index_page(page_name, stitches, website_name)
-        return
-
-    stitches_code = get_stitches(stitches)
-
-    # Creates the HTML and CSS files 
-    pages_path = website_name + "/src/content/pages"
-    # os.system("cp {}/_template.txt {}/{}.html".format(pages_path, pages_path, page_name))
-
-    front_matter = f"""---
+        stitches_code = self.get_stitches(stitches)
+        front_matter = f"""---
 title: 'Page title for <title> and OG tags'
 description: 'Description for <meta> description and OG tags'
 preloadImg: '/assets/images/imagename.format'
@@ -274,139 +294,72 @@ eleventyNavigation:
 
 {{% extends "layouts/base.html" %}}
 
-    """
+"""
 
-    with open("{}/src/content/pages/{}.html".format(website_name, page_name), "a") as f:
-        f.write(front_matter)
-        f.write("{% block head %}\n")
-        f.write('<link rel="stylesheet" href="/assets/css/{}.css" />'.format(page_name))
-        f.write("\n{% endblock %}\n")
-    
-        f.write("{% block body %}\n")
+        with open(f"{self.website_name}/src/content/pages/{page_name}.html", "a") as f:
+            f.write(front_matter)
+            f.write("{% block head %}\n")
+            f.write(f'<link rel="stylesheet" href="/assets/css/{page_name}.css" />')
+            f.write("\n{% endblock %}\n")
+            f.write("{% block body %}\n")
 
-        for html_and_css in stitches_code:
-            f.write(html_and_css[0])
-            add_javascript(html_and_css, f)
+            for html_and_css in stitches_code:
+                f.write(html_and_css[0])
+                self.add_javascript(html_and_css, f)
 
-        f.write("\n{% endblock %}\n")
+            f.write("\n{% endblock %}\n")
 
-    with open("{}/src/assets/css/{}.css".format(website_name, page_name), "a") as f:
-        for html_and_css in stitches_code:
-            f.write(html_and_css[1])
-        
+        with open(f"{self.website_name}/src/assets/css/{page_name}.css", "a") as f:
+            for html_and_css in stitches_code:
+                f.write(html_and_css[1])
 
-# Creates an index page
-def create_index_page(page_name, stitches, website_name):
-    # Gets all the website's stitches
-    stitches_code = get_stitches(stitches)
-    save_to_file(page_name, stitches_code, website_name)
+    def create_index_page(self, page_name, stitches):
+        stitches_code = self.get_stitches(stitches)
+        self.save_to_file(page_name, stitches_code)
 
-# Adds any JavaScript from the stitch
-def add_javascript(stitches_code, file):
-    if len(stitches_code) > 2:
-        file.write("<script>")
-        file.write(stitches_code[2])
-        file.write("</script>")
+    def add_javascript(self, stitches_code, file):
+        if len(stitches_code) > 2:
+            file.write("<script>")
+            file.write(stitches_code[2])
+            file.write("</script>")
 
-def save_to_file(page_name, html_and_css, save_to_file, website_name):
-    # Sets the path of the HTML file
-    html_file_path = ""
-    css_file_path = ""
-    if page_name == "index":
-        html_file_path += website_name + "/src/" + page_name + ".html"
-        css_file_path += website_name + "/src/assets/css/" + "local.css"
+    def save_to_file(self, page_name, html_and_css):
+        html_file_path = f"{self.website_name}/src/{'content/pages/' if page_name != 'index' else ''}{page_name}.html"
+        css_file_path = f"{self.website_name}/src/assets/css/{'local' if page_name == 'index' else page_name}.css"
 
-    else:
-        html_file_path += website_name + "/src/content/pages/" + page_name + ".html"
-        css_file_path += website_name + "/src/assets/css/" + page_name + ".css"
+        with open(html_file_path, "a") as f:
+            f.write("{% block body %}\n")
+            for html_and_css_code in html_and_css:
+                f.write(html_and_css_code[0])
+                self.add_javascript(html_and_css_code, f)
+            f.write("\n{% endblock %}\n")
 
-    # Saves the HTML to the file
-    with open(html_file_path, "a") as f:
-        f.write("{% block body %}\n")
+        if page_name == "index":
+            with open(f"{self.website_name}/src/assets/css/critical.css", "a") as f:
+                f.write("\n")
+                f.write(html_and_css[0][1])
+                f.write("\n")
+            html_and_css.pop(0)
 
-        # Writes the HTML to the index file
-        for html_and_css_code in html_and_css:
-            f.write(html_and_css_code[0])
+        with open(css_file_path, "a") as f:
+            for html_and_css_code in html_and_css:
+                f.write(html_and_css_code[1])
+                f.write("\n")
 
-            add_javascript(html_and_css_code, f) 
+    @staticmethod
+    def parse_yaml_file(file_name):
+        with open(file_name, 'r') as yaml_file:
+            return yaml.safe_load(yaml_file)
 
-        f.write("\n{% endblock %}\n")
-
-    # If the file is a home page, saves the hero's CSS to the critical file
-    if page_name == "index":
-        with open("{}/src/assets/css/critical.css".format(website_name), "a") as f:
-            f.write("\n")
-            f.write(html_and_css[0][1])
-            f.write("\n")
-
-        # Removes the hero's code from the array
-        html_and_css.pop(0)
-
-    with open(css_file_path, "a") as f:
-        for html_and_css_code in html_and_css:
-            f.write(html_and_css_code[1])
-            f.write("\n")
-
-def parse_yaml_file(file_name):
-    file_data = None
-
-    with open(file_name, 'r') as yaml_file:
-        file_data = yaml.safe_load(yaml_file)
-
-        # Convert to JSON
-        # json_data = json.dumps(data, indent=4)
-
-    return file_data
-
-if __name__ == "__main__":
-    # Loads the enviroment variables
+def main():
     load_dotenv()
-
-    # Sets up an argument parser
     parser = argparse.ArgumentParser(description="Generate a website from a YAML file.")
-    parser.add_argument(
-        "file_name", 
-        type=str, 
-        help="The path to the YAML file containing the website data."
-    )
-    parser.add_argument(
-        "website_name", 
-        type=str, 
-        help="The name for the folder to put the website in."
-    )
+    parser.add_argument("file_name", type=str, help="The path to the YAML file containing the website data.")
+    parser.add_argument("website_name", type=str, help="The name for the folder to put the website in.")
     args = parser.parse_args()
 
-    # Gets the file name and website name
-    file_name = args.file_name
-    website_name = args.website_name
+    website_builder = WebsiteBuilder(args.website_name)
+    website_builder.build(args.file_name)
 
-    # Gets the data from the YAML file
-    website_data = parse_yaml_file(file_name)
-
-    # Gets the core styles for any stitch (they're all the same)
-    get_core_styles(website_data["Navbar"], website_name)
-
-    # Creates the navbar  
-    if website_data["Navbar"]:
-        print("Creating the navbar...")
-        create_navbar(website_data["Navbar"], website_name)
-        print("Navbar created!")
-
-    # Creates the footer  
-    if website_data["Footer"]:
-        print("Creating the footer...")
-        create_footer(website_data["Footer"], website_name)
-        print("Footer created!")
-
-    # Exists the program if there's no pages provided (since there's nothing left to do)
-    if not website_data["Pages"]:
-        print("No pages found, goodebye!")
-        exit
-
-    for page in website_data["Pages"]:
-        print("Creating {} page...".format(page["Page_Name"]))
-        create_page(page["Page_Name"], page["Sections"], website_name)
-        print("Page created!")
-
-    print("Website created! Please look at the {}/ folder for your new website".format(website_name))
-
+if __name__ == "__main__":
+    main()
