@@ -15,9 +15,55 @@ class WebsiteBuilder:
     def __init__(self, website_name):
         self.website_name = website_name
         self.session_token = os.getenv("codestitch_session")
+        self.website_has_dark_mode = False
         self.cookies = {}
         if self.session_token:
             self.cookies["codestitch_session"] = self.session_token
+
+    def get_dark_mode_styling(self):
+        # Gets the dark mode css for dark.css 
+        dark_mode_css_html = self.get_stitch_html_css(125)
+
+        # Write only the css file
+        self.save_to_file("dark", [dark_mode_css_html], write_html = False)
+
+    def get_stitch_html_css(self, stitch_id):
+        page_html = self.get_page_html(stitch_id)
+        parser = BeautifulSoup(page_html, "html.parser")
+        stitch_html_encoded = parser.select(".tab.active-tab .CODE-TEXTAREA")
+        
+        if len(stitch_html_encoded) == 0:
+            raise Exception("Couldn't get the HTML from the stitch")
+
+        stitch_html = html.unescape(stitch_html_encoded[0].text)
+
+        css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "css"})
+        code_id = int(css_a_tag["data-codeid"])
+
+        # Checks if the dark mode if the user wants dark mode, and if it's available
+        # If it is, then adds one to the code_id (the CSS codeid for dark mode is always the codeid + 1)
+        if self.website_has_dark_mode:
+            # Checks if the stitch has a dark mode
+            if parser.find("input", id="css-theme-dark"):
+                code_id += 1
+
+        parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": str(code_id)})
+
+        if len(parent_div) == 0:
+            raise Exception(f"Couldn't find the div with the correct data-codeid: {code_id}")
+
+        stitch_css_encoded = parent_div[0].find("textarea")
+        stitch_css = html.unescape(stitch_css_encoded.text)
+
+        js_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "js"})
+        if js_a_tag:
+            code_id = js_a_tag["data-codeid"]
+            parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
+            stitch_js_code = parent_div[0].find("textarea")
+            stitch_js = html.unescape(stitch_js_code.text)
+            return [stitch_html, stitch_css, stitch_js]
+
+        return [stitch_html, stitch_css]
 
     def check_and_remove_directory(self):
         """Checks if directory exists and asks for confirmation before removing"""
@@ -66,6 +112,10 @@ class WebsiteBuilder:
 
         # Load website data using the static method
         website_data = WebsiteBuilder.parse_yaml_file(yaml_file)
+
+        if website_data["Dark_Mode"]:
+            self.website_has_dark_mode = True
+            self.get_dark_mode_styling()
         
         # Get core styles
         print("Getting core styles...")
@@ -227,36 +277,6 @@ class WebsiteBuilder:
 
         return response.content.decode()
 
-    def get_stitch_html_css(self, stitch_id):
-        page_html = self.get_page_html(stitch_id)
-        parser = BeautifulSoup(page_html, "html.parser")
-        stitch_html_encoded = parser.select(".tab.active-tab .CODE-TEXTAREA")
-        
-        if len(stitch_html_encoded) == 0:
-            raise Exception("Couldn't get the HTML from the stitch")
-
-        stitch_html = html.unescape(stitch_html_encoded[0].text)
-
-        css_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "css"})
-        code_id = css_a_tag["data-codeid"]
-        parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
-
-        if len(parent_div) == 0:
-            raise Exception(f"Couldn't find the div with the correct data-codeid: {code_id}")
-
-        stitch_css_encoded = parent_div[0].find("textarea")
-        stitch_css = html.unescape(stitch_css_encoded.text)
-
-        js_a_tag = parser.find("a", class_="code_list_link", attrs={"data-codetype": "js"})
-        if js_a_tag:
-            code_id = js_a_tag["data-codeid"]
-            parent_div = parser.find_all("div", class_="tab", attrs={"data-codeid": code_id})
-            stitch_js_code = parent_div[0].find("textarea")
-            stitch_js = html.unescape(stitch_js_code.text)
-            return [stitch_html, stitch_css, stitch_js]
-
-        return [stitch_html, stitch_css]
-
     def get_core_styles(self, stitch_id):
         page_html = self.get_page_html(stitch_id)
         parser = BeautifulSoup(page_html, "html.parser")
@@ -323,16 +343,17 @@ eleventyNavigation:
             file.write(stitches_code[2])
             file.write("</script>")
 
-    def save_to_file(self, page_name, html_and_css):
+    def save_to_file(self, page_name, html_and_css, write_html = True):
         html_file_path = f"{self.website_name}/src/{'content/pages/' if page_name != 'index' else ''}{page_name}.html"
         css_file_path = f"{self.website_name}/src/assets/css/{'local' if page_name == 'index' else page_name}.css"
 
-        with open(html_file_path, "a") as f:
-            f.write("{% block body %}\n")
-            for html_and_css_code in html_and_css:
-                f.write(html_and_css_code[0])
-                self.add_javascript(html_and_css_code, f)
-            f.write("\n{% endblock %}\n")
+        if write_html:
+            with open(html_file_path, "a") as f:
+                f.write("{% block body %}\n")
+                for html_and_css_code in html_and_css:
+                    f.write(html_and_css_code[0])
+                    self.add_javascript(html_and_css_code, f)
+                f.write("\n{% endblock %}\n")
 
         if page_name == "index":
             with open(f"{self.website_name}/src/assets/css/critical.css", "a") as f:
